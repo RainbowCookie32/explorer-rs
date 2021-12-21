@@ -188,88 +188,19 @@ impl epi::App for ExplorerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
                 egui::Grid::new("entries_grid").min_col_width(90.0).show(ui, |ui| {
-                    for (idx, entry) in self.current_dir_items.iter().enumerate() {
-                        let (label_name, label_type) = match entry._type {
-                            EntryType::File => {
-                                let file_type = {
-                                    if entry.extension.is_empty() {
-                                        "File".to_string()
-                                    }
-                                    else {
-                                        format!("{} file", entry.extension)
-                                    }
-                                };
-
-                                (format!("🗋 {}", entry.name), file_type)
-                            }
-                            EntryType::Folder => (format!("🗁 {}", entry.name), "Folder".to_string()),
-                            EntryType::Symlink => (format!("🔗 {}", entry.name), "Symlink".to_string())
-                        };
-
-                        let selected = {
-                            if let Some(selection) = self.selected_entry.as_ref() {
-                                *selection == idx
-                            }
-                            else {
-                                false
-                            }
-                        };
-
-                        let label_size = ExplorerApp::size_to_string(entry.length);
-                        let entry_label = ui.selectable_label(selected, label_name);
-
-                        if entry_label.double_clicked() {
-                            if entry._type == EntryType::File {
-                                open::that_in_background(&entry.path);
-                            }
-                            else {
-                                self.previous_path.push(self.current_path.clone());
-                                self.current_path = entry.path.clone();
-                                self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-
-                                refresh_files = true;
-                            }
-
-                            self.selected_entry = Some(idx);
-                        }
-                        else if entry_label.clicked() {
-                            self.selected_entry = Some(idx);
-                        }
-                        else if entry_label.secondary_clicked() {
-                            self.context_menu_target = idx;
-                            self.context_menu_response = Some(entry_label);
-                            
-                            self.selected_entry = Some(idx);
-                        }
-
-                        ui.label(label_type);
-                        ui.label(label_size);
-
-                        if let Some(creation_time) = entry.last_modification.as_ref() {
-                            ui.label(&ExplorerApp::duration_to_string(creation_time));
-                        }
-
-                        if let Some(last_accessed) = entry.last_accessed.as_ref() {
-                            ui.label(&ExplorerApp::duration_to_string(last_accessed));
-                        }
-
-                        if let Some(last_modified) = entry.last_modified.as_ref() {
-                            ui.label(&ExplorerApp::duration_to_string(last_modified));
-                        }
-
-                        ui.label(&entry.permissions);
-                        ui.end_row();
+                    // Don't fill the table or overwrite the value of refresh_files if a refresh has to be done.
+                    if !refresh_files {
+                        refresh_files = self.fill_files_table(ui);
                     }
                 });
 
-                let mut close_popup = false;
-
                 if let Some(target) = self.context_menu_response.as_ref() {
-                    let menu_id = ui.make_persistent_id("context_menu");
+                    let mut close_context_menu = false;
+                    let context_menu_id = ui.make_persistent_id("context_menu");
     
-                    ui.memory().open_popup(menu_id);
+                    ui.memory().open_popup(context_menu_id);
 
-                    egui::containers::popup_below_widget(ui, menu_id, target, |ui| {
+                    egui::containers::popup_below_widget(ui, context_menu_id, target, |ui| {
                         ui.set_min_width(150.0);
 
                         if ui.selectable_label(false, "Open").clicked() {
@@ -286,7 +217,7 @@ impl epi::App for ExplorerApp {
                                 }
                             }
 
-                            close_popup = true;
+                            close_context_menu = true;
                         }
 
                         ui.separator();
@@ -294,14 +225,14 @@ impl epi::App for ExplorerApp {
                         // TODO.
                         ui.add_enabled_ui(false, |ui| {
                             if ui.selectable_label(false, "Cut").clicked() {
-                                close_popup = true;
+                                close_context_menu = true;
                             }
                         });
 
                         // TODO.
                         ui.add_enabled_ui(false, |ui| {
                             if ui.selectable_label(false, "Copy").clicked() {
-                                close_popup = true;
+                                close_context_menu = true;
                             }
                         });
 
@@ -310,13 +241,13 @@ impl epi::App for ExplorerApp {
                         // TODO.
                         ui.add_enabled_ui(false, |ui| {
                             if ui.selectable_label(false, "Rename").clicked() {
-                                close_popup = true;
+                                close_context_menu = true;
                             }
                         });
 
                         // TODO: This could use a confirmation prompt.
                         if ui.selectable_label(false, "Remove").clicked() {
-                            close_popup = true;
+                            close_context_menu = true;
 
                             if let Some(entry) = self.current_dir_items.get(self.context_menu_target) {
                                 if entry._type == EntryType::Folder {
@@ -334,17 +265,15 @@ impl epi::App for ExplorerApp {
                             }
                         }
                     });
-                }
 
-                if close_popup {
-                    ui.memory().close_popup();
-                            
-                    self.context_menu_target = 0;
-                    self.context_menu_response = None;
+                    if close_context_menu {
+                        ui.memory().close_popup();
+                                
+                        self.context_menu_target = 0;
+                        self.context_menu_response = None;
+                    }
                 }
             });
-
-            
         });
 
         if refresh_files {
@@ -355,6 +284,86 @@ impl epi::App for ExplorerApp {
 }
 
 impl ExplorerApp {
+    fn fill_files_table(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut refresh_files = false;
+
+        for (idx, entry) in self.current_dir_items.iter().enumerate() {
+            let (entry_name, entry_type) = match entry._type {
+                EntryType::File => {
+                    let file_type = {
+                        if entry.extension.is_empty() {
+                            "File".to_string()
+                        }
+                        else {
+                            format!("{} file", entry.extension)
+                        }
+                    };
+
+                    (format!("🗋 {}", entry.name), file_type)
+                }
+                EntryType::Folder => (format!("🗁 {}", entry.name), "Folder".to_string()),
+                EntryType::Symlink => (format!("🔗 {}", entry.name), "Symlink".to_string())
+            };
+
+            let entry_size = ExplorerApp::size_to_string(entry.length);
+
+            let is_selected = {
+                if let Some(selection) = self.selected_entry.as_ref() {
+                    *selection == idx
+                }
+                else {
+                    false
+                }
+            };
+            
+            let entry_label = ui.selectable_label(is_selected, entry_name);
+
+            ui.label(entry_type);
+            ui.label(entry_size);
+
+            if entry_label.double_clicked() {
+                if entry._type == EntryType::File {
+                    open::that_in_background(&entry.path);
+                }
+                else {
+                    self.previous_path.push(self.current_path.clone());
+                    self.current_path = entry.path.clone();
+                    self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+
+                    refresh_files = true;
+                }
+
+                self.selected_entry = Some(idx);
+            }
+            else if entry_label.clicked() {
+                self.selected_entry = Some(idx);
+            }
+            else if entry_label.secondary_clicked() {
+                self.context_menu_target = idx;
+                self.context_menu_response = Some(entry_label);
+                
+                self.selected_entry = Some(idx);
+            }
+
+            if let Some(creation_time) = entry.last_modification.as_ref() {
+                ui.label(&ExplorerApp::duration_to_string(creation_time));
+            }
+
+            if let Some(last_accessed) = entry.last_accessed.as_ref() {
+                ui.label(&ExplorerApp::duration_to_string(last_accessed));
+            }
+
+            if let Some(last_modified) = entry.last_modified.as_ref() {
+                ui.label(&ExplorerApp::duration_to_string(last_modified));
+            }
+
+            ui.label(&entry.permissions);
+            ui.end_row();
+        }
+
+        refresh_files
+    }
+
     pub fn update_dir_entries(&mut self) {
         if let Ok(entries) = std::fs::read_dir(&self.current_path) {
             let mut dirs = Vec::new();
