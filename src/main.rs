@@ -42,6 +42,9 @@ struct ExplorerApp {
     context_menu_response: Option<egui::Response>,
 
     #[serde(skip)]
+    selected_entry: Option<usize>,
+
+    #[serde(skip)]
     previous_path: Vec<PathBuf>,
     #[serde(skip)]
     forward_path: Vec<PathBuf>,
@@ -66,6 +69,8 @@ impl Default for ExplorerApp {
 
             context_menu_target: 0,
             context_menu_response: None,
+
+            selected_entry: None,
 
             previous_path: Vec::new(),
             forward_path: Vec::new(),
@@ -201,8 +206,17 @@ impl epi::App for ExplorerApp {
                             EntryType::Symlink => (format!("🔗 {}", entry.name), "Symlink".to_string())
                         };
 
+                        let selected = {
+                            if let Some(selection) = self.selected_entry.as_ref() {
+                                *selection == idx
+                            }
+                            else {
+                                false
+                            }
+                        };
+
                         let label_size = ExplorerApp::size_to_string(entry.length);
-                        let entry_label = ui.selectable_label(false, label_name);
+                        let entry_label = ui.selectable_label(selected, label_name);
 
                         if entry_label.double_clicked() {
                             if entry._type == EntryType::File {
@@ -215,10 +229,17 @@ impl epi::App for ExplorerApp {
 
                                 refresh_files = true;
                             }
+
+                            self.selected_entry = Some(idx);
+                        }
+                        else if entry_label.clicked() {
+                            self.selected_entry = Some(idx);
                         }
                         else if entry_label.secondary_clicked() {
                             self.context_menu_target = idx;
                             self.context_menu_response = Some(entry_label);
+                            
+                            self.selected_entry = Some(idx);
                         }
 
                         ui.label(label_type);
@@ -327,6 +348,7 @@ impl epi::App for ExplorerApp {
         });
 
         if refresh_files {
+            self.selected_entry = None;
             self.update_dir_entries();
         }
     }
