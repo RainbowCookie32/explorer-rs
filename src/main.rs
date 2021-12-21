@@ -43,6 +43,10 @@ struct ExplorerApp {
 
     #[serde(skip)]
     selected_entry: Option<usize>,
+    #[serde(skip)]
+    renaming_entry: Option<usize>,
+    #[serde(skip)]
+    renaming_string: String,
 
     #[serde(skip)]
     previous_path: Vec<PathBuf>,
@@ -71,6 +75,8 @@ impl Default for ExplorerApp {
             context_menu_response: None,
 
             selected_entry: None,
+            renaming_entry: None,
+            renaming_string: String::new(),
 
             previous_path: Vec::new(),
             forward_path: Vec::new(),
@@ -217,12 +223,16 @@ impl epi::App for ExplorerApp {
 
                         ui.separator();
 
-                        // TODO.
-                        ui.add_enabled_ui(false, |ui| {
-                            if ui.selectable_label(false, "Rename").clicked() {
-                                close_context_menu = true;
+                        if ui.selectable_label(false, "Rename").clicked() {
+                            if let Some(target) = self.selected_entry.as_ref() {
+                                if let Some(entry) = self.current_dir_items.get(*target) {
+                                    self.renaming_entry = Some(*target);
+                                    self.renaming_string = entry.name.clone();
+                                }
                             }
-                        });
+
+                            close_context_menu = true;
+                        }
 
                         // TODO: This could use a confirmation prompt.
                         if ui.selectable_label(false, "Remove").clicked() {
@@ -310,6 +320,15 @@ impl ExplorerApp {
         let mut new_path = None;
 
         for (idx, entry) in self.current_dir_items.iter().enumerate() {
+            let renaming = {
+                if let Some(target) = self.renaming_entry.as_ref() {
+                    idx == *target
+                }
+                else {
+                    false
+                }
+            };
+
             let (entry_name, entry_type) = match entry._type {
                 EntryType::File => {
                     let file_type = {
@@ -329,39 +348,84 @@ impl ExplorerApp {
 
             let entry_size = ExplorerApp::size_to_string(entry.length);
 
-            let is_selected = {
-                if let Some(selection) = self.selected_entry.as_ref() {
-                    *selection == idx
+            if renaming {
+                // Red highlight for the text if there is a file with the same name.
+                if entry.name != self.renaming_string {
+                    if let Some(path) = entry.path.parent() {
+                        if path.join(PathBuf::from(&self.renaming_string)).exists() {
+                            ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(255, 0, 0));
+                        }
+                    }
+                }
+
+                let entry_label = ui.text_edit_singleline(&mut self.renaming_string);
+
+                if entry_label.lost_focus() {
+                    // User committed the changes.
+                    if ui.input().key_pressed(egui::Key::Enter) {
+                        // Check if an entry with the same name already exists.
+                        if let Some(parent) = entry.path.parent() {
+                            let new_entry = parent.join(PathBuf::from(&self.renaming_string));
+
+                            // There's already an entry on this directory with that name, don't rename.
+                            if new_entry.exists() {
+                                
+                            }
+                            else {
+                                if let Err(e) = std::fs::rename(&entry.path, new_entry) {
+                                    println!("{}", e.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    // Forcing a refresh for the current dir.
+                    new_path = Some(self.current_path.clone());
+                    
+                    self.renaming_entry = None;
+                    self.renaming_string = String::new();
                 }
                 else {
-                    false
+                    entry_label.request_focus();
                 }
-            };
-            
-            let entry_label = ui.selectable_label(is_selected, entry_name);
+
+                ui.visuals_mut().override_text_color = None;
+            }
+            else {
+                let is_selected = {
+                    if let Some(selection) = self.selected_entry.as_ref() {
+                        *selection == idx
+                    }
+                    else {
+                        false
+                    }
+                };
+                
+                let entry_label = ui.selectable_label(is_selected, entry_name);
+
+                if entry_label.double_clicked() {
+                    if entry._type == EntryType::File {
+                        open::that_in_background(&entry.path);
+                    }
+                    else {
+                        new_path = Some(entry.path.clone());
+                    }
+    
+                    self.selected_entry = Some(idx);
+                }
+                else if entry_label.clicked() {
+                    self.selected_entry = Some(idx);
+                }
+                else if entry_label.secondary_clicked() {
+                    self.context_menu_target = idx;
+                    self.context_menu_response = Some(entry_label);
+                    
+                    self.selected_entry = Some(idx);
+                }
+            }
 
             ui.label(entry_type);
             ui.label(entry_size);
-
-            if entry_label.double_clicked() {
-                if entry._type == EntryType::File {
-                    open::that_in_background(&entry.path);
-                }
-                else {
-                    new_path = Some(entry.path.clone());
-                }
-
-                self.selected_entry = Some(idx);
-            }
-            else if entry_label.clicked() {
-                self.selected_entry = Some(idx);
-            }
-            else if entry_label.secondary_clicked() {
-                self.context_menu_target = idx;
-                self.context_menu_response = Some(entry_label);
-                
-                self.selected_entry = Some(idx);
-            }
 
             if let Some(creation_time) = entry.last_modification.as_ref() {
                 ui.label(&ExplorerApp::duration_to_string(creation_time));
