@@ -167,11 +167,8 @@ impl epi::App for ExplorerApp {
             });
 
             egui::Grid::new("header_grid").min_col_width(110.0).show(ui, |ui| {
-                // FIXME: This is all duct-taped together and who knows when it will fall apart.
-                // Would be nice to find a nicer solution.
+                // FIXME: This barely works. I need a proper solution for a header.
                 ui.label("Name");
-                ui.add_space(70.0);
-
                 ui.label("Type");
                 ui.label("Size");
                 ui.label("Creation Time");
@@ -207,11 +204,11 @@ impl epi::App for ExplorerApp {
                         let label_size = ExplorerApp::size_to_string(entry.length);
                         let entry_label = ui.selectable_label(false, label_name);
 
-                        if entry_label.double_clicked() && entry._type == EntryType::File {
-                            open::that_in_background(&entry.path);
-                        }
-                        else if entry_label.clicked() {
-                            if entry._type != EntryType::File {
+                        if entry_label.double_clicked() {
+                            if entry._type == EntryType::File {
+                                open::that_in_background(&entry.path);
+                            }
+                            else {
                                 self.previous_path.push(self.current_path.clone());
                                 self.current_path = entry.path.clone();
                                 self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
@@ -223,8 +220,6 @@ impl epi::App for ExplorerApp {
                             self.context_menu_target = idx;
                             self.context_menu_response = Some(entry_label);
                         }
-
-                        ui.add_space(50.0);
 
                         ui.label(label_type);
                         ui.label(label_size);
