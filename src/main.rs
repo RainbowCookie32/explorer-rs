@@ -98,8 +98,6 @@ impl epi::App for ExplorerApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
-        let mut refresh_files = false;
-
         if self.current_path_str.is_empty() {
             self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
         }
@@ -108,43 +106,26 @@ impl epi::App for ExplorerApp {
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!self.previous_path.is_empty(), |ui| {
                     if ui.small_button("⏴").clicked() {
-                        if let Some(target_path) = self.previous_path.pop() {
-                            self.forward_path.push(self.current_path.clone());
-                            self.current_path = target_path;
-                            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-
-                            refresh_files = true;
-                        }
+                        self.previous_dir();
                     }
                 });
 
                 ui.add_enabled_ui(!self.forward_path.is_empty(), |ui| {
                     if ui.small_button("⏵").clicked() {
-                        if let Some(target_path) = self.forward_path.pop() {
-                            self.previous_path.push(self.current_path.clone());
-                            self.current_path = target_path;
-                            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-
-                            refresh_files = true;
-                        }
+                        self.forward_dir();
                     }
                 });
 
                 ui.add_enabled_ui(self.current_path.parent().is_some(), |ui| {
                     if ui.small_button("⏶").clicked() {
-                        if let Some(parent) = self.current_path.parent() {
-                            self.current_path = parent.to_path_buf();
-                            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-
-                            refresh_files = true;
-                        }
+                        self.previous_level();
                     }
                 });
 
                 ui.separator();
 
                 if ui.small_button("↻").clicked() {
-                    refresh_files = true;
+                    self.refresh_dir();
                 }
 
                 if self.editing_current_path {
@@ -161,11 +142,7 @@ impl epi::App for ExplorerApp {
                 self.editing_current_path = path_text.has_focus();
 
                 if path_text.lost_focus() && ui.input().key_down(egui::Key::Enter) {
-                    self.previous_path.push(self.current_path.clone());
-                    self.current_path = PathBuf::from(&self.current_path_str);
-                    self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-
-                    refresh_files = true;
+                    self.change_dir(PathBuf::from(&self.current_path_str));
                 }
 
                 ui.visuals_mut().override_text_color = None;
@@ -188,32 +165,34 @@ impl epi::App for ExplorerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
                 egui::Grid::new("entries_grid").min_col_width(90.0).show(ui, |ui| {
-                    // Don't fill the table or overwrite the value of refresh_files if a refresh has to be done.
-                    if !refresh_files {
-                        refresh_files = self.fill_files_table(ui);
-                    }
+                    self.fill_files_table(ui);
                 });
 
-                if let Some(target) = self.context_menu_response.as_ref() {
+                if let Some(target) = self.context_menu_response.clone() {
                     let mut close_context_menu = false;
                     let context_menu_id = ui.make_persistent_id("context_menu");
     
                     ui.memory().open_popup(context_menu_id);
 
-                    egui::containers::popup_below_widget(ui, context_menu_id, target, |ui| {
+                    egui::containers::popup_below_widget(ui, context_menu_id, &target, |ui| {
                         ui.set_min_width(150.0);
 
                         if ui.selectable_label(false, "Open").clicked() {
-                            if let Some(entry) = self.current_dir_items.get(self.context_menu_target) {
-                                if entry._type == EntryType::File {
-                                    open::that_in_background(&entry.path);
+                            let (is_file, path) = {
+                                if let Some(entry) = self.current_dir_items.get(self.context_menu_target) {
+                                    (entry._type == EntryType::File, entry.path.clone())
                                 }
                                 else {
-                                    self.previous_path.push(self.current_path.clone());
-                                    self.current_path = entry.path.clone();
-                                    self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+                                    (false, PathBuf::new())
+                                }
+                            };
 
-                                    refresh_files = true;
+                            if path.exists() {
+                                if is_file {
+                                    open::that_in_background(path);
+                                }
+                                else {
+                                    self.change_dir(path);
                                 }
                             }
 
@@ -261,7 +240,7 @@ impl epi::App for ExplorerApp {
                                     }
                                 }
 
-                                refresh_files = true;
+                                self.refresh_dir();
                             }
                         }
                     });
@@ -275,17 +254,60 @@ impl epi::App for ExplorerApp {
                 }
             });
         });
-
-        if refresh_files {
-            self.selected_entry = None;
-            self.update_dir_entries();
-        }
     }
 }
 
 impl ExplorerApp {
-    fn fill_files_table(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut refresh_files = false;
+    fn change_dir(&mut self, new_path: PathBuf) {
+        self.selected_entry = None;
+        self.previous_path.push(self.current_path.clone());
+
+        self.current_path = new_path;
+        self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+
+        self.update_dir_entries();
+    }
+
+    fn previous_dir(&mut self) {
+        if let Some(target_path) = self.previous_path.pop() {
+            self.forward_path.push(self.current_path.clone());
+            self.current_path = target_path;
+            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+
+            self.selected_entry = None;
+            self.update_dir_entries();
+        }
+    }
+
+    fn forward_dir(&mut self) {
+        if let Some(target_path) = self.forward_path.pop() {
+            self.previous_path.push(self.current_path.clone());
+            self.current_path = target_path;
+            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+
+            self.selected_entry = None;
+            self.update_dir_entries();
+        }
+    }
+
+    fn previous_level(&mut self) {
+        if let Some(parent) = self.current_path.parent() {
+            self.previous_path.push(self.current_path.clone());
+            self.current_path = parent.to_path_buf();
+            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+
+            self.selected_entry = None;
+            self.update_dir_entries();
+        }
+    }
+
+    fn refresh_dir(&mut self) {
+        self.selected_entry = None;
+        self.update_dir_entries();
+    }
+
+    fn fill_files_table(&mut self, ui: &mut egui::Ui) {
+        let mut new_path = None;
 
         for (idx, entry) in self.current_dir_items.iter().enumerate() {
             let (entry_name, entry_type) = match entry._type {
@@ -326,11 +348,7 @@ impl ExplorerApp {
                     open::that_in_background(&entry.path);
                 }
                 else {
-                    self.previous_path.push(self.current_path.clone());
-                    self.current_path = entry.path.clone();
-                    self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-
-                    refresh_files = true;
+                    new_path = Some(entry.path.clone());
                 }
 
                 self.selected_entry = Some(idx);
@@ -361,7 +379,9 @@ impl ExplorerApp {
             ui.end_row();
         }
 
-        refresh_files
+        if let Some(new_path) = new_path {
+            self.change_dir(new_path);
+        }
     }
 
     pub fn update_dir_entries(&mut self) {
