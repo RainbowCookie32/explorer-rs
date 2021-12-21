@@ -1,0 +1,60 @@
+name: Rust build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:  
+  linux-build:
+    runs-on: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build (release)
+      run: cargo build --release
+    - name: Move binary
+      run: |
+        mkdir result
+        cp target/release/explorer-rs result
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: explorer-rs_linux
+        path: result
+        
+  windows-build:
+    runs-on: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: |
+          %userprofile%/.cargo/bin/
+          %userprofile%/.cargo/registry/index/
+          %userprofile%/.cargo/registry/cache/
+          %userprofile%/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build (release)
+      run: cargo build --release
+    - name: Move binary
+      run: |
+        mkdir result
+        copy target/release/explorer-rs.exe result
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: explorer-rs_windows
+        path: result 
