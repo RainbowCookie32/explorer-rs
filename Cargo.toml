@@ -10,5 +10,5 @@ dirs = "4.0.0"
 open = "2.0.2"
 time = "0.3.5"
 bytesize = "1.1.0"
-serde = { version = "1", features = ["derive"] }
-eframe = { version = "0.15.0", features = ["persistence"] }
+serde = { version = "1.0.133", features = ["derive"] }
+eframe = { version = "0.16.0", features = ["persistence"] }

@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 
 use time::Duration;
@@ -37,11 +39,6 @@ struct ExplorerApp {
     editing_current_path: bool,
 
     #[serde(skip)]
-    context_menu_target: usize,
-    #[serde(skip)]
-    context_menu_response: Option<egui::Response>,
-
-    #[serde(skip)]
     selected_entry: Option<usize>,
     #[serde(skip)]
     renaming_entry: Option<usize>,
@@ -71,9 +68,6 @@ impl Default for ExplorerApp {
             current_path_str,
             editing_current_path: false,
 
-            context_menu_target: 0,
-            context_menu_response: None,
-
             selected_entry: None,
             renaming_entry: None,
             renaming_string: String::new(),
@@ -91,7 +85,7 @@ impl epi::App for ExplorerApp {
         "explorer-rs"
     }
 
-    fn setup(&mut self, _ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, storage: Option<&dyn epi::Storage>) {
+    fn setup(&mut self, _ctx: &egui::CtxRef, _frame: &epi::Frame, storage: Option<&dyn epi::Storage>) {
         if let Some(storage) = storage {
             *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
         }
@@ -103,7 +97,7 @@ impl epi::App for ExplorerApp {
         epi::set_value(storage, epi::APP_KEY, self);
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
         if self.current_path_str.is_empty() {
             self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
         }
@@ -173,95 +167,6 @@ impl epi::App for ExplorerApp {
                 egui::Grid::new("entries_grid").min_col_width(90.0).show(ui, |ui| {
                     self.fill_files_table(ui);
                 });
-
-                if let Some(target) = self.context_menu_response.clone() {
-                    let mut close_context_menu = false;
-                    let context_menu_id = ui.make_persistent_id("context_menu");
-    
-                    ui.memory().open_popup(context_menu_id);
-
-                    egui::containers::popup_below_widget(ui, context_menu_id, &target, |ui| {
-                        ui.set_min_width(150.0);
-
-                        if ui.selectable_label(false, "Open").clicked() {
-                            let (is_file, path) = {
-                                if let Some(entry) = self.current_dir_items.get(self.context_menu_target) {
-                                    (entry._type == EntryType::File, entry.path.clone())
-                                }
-                                else {
-                                    (false, PathBuf::new())
-                                }
-                            };
-
-                            if path.exists() {
-                                if is_file {
-                                    open::that_in_background(path);
-                                }
-                                else {
-                                    self.change_dir(path);
-                                }
-                            }
-
-                            close_context_menu = true;
-                        }
-
-                        ui.separator();
-
-                        // TODO.
-                        ui.add_enabled_ui(false, |ui| {
-                            if ui.selectable_label(false, "Cut").clicked() {
-                                close_context_menu = true;
-                            }
-                        });
-
-                        // TODO.
-                        ui.add_enabled_ui(false, |ui| {
-                            if ui.selectable_label(false, "Copy").clicked() {
-                                close_context_menu = true;
-                            }
-                        });
-
-                        ui.separator();
-
-                        if ui.selectable_label(false, "Rename").clicked() {
-                            if let Some(target) = self.selected_entry.as_ref() {
-                                if let Some(entry) = self.current_dir_items.get(*target) {
-                                    self.renaming_entry = Some(*target);
-                                    self.renaming_string = entry.name.clone();
-                                }
-                            }
-
-                            close_context_menu = true;
-                        }
-
-                        // TODO: This could use a confirmation prompt.
-                        if ui.selectable_label(false, "Remove").clicked() {
-                            close_context_menu = true;
-
-                            if let Some(entry) = self.current_dir_items.get(self.context_menu_target) {
-                                if entry._type == EntryType::Folder {
-                                    if let Err(e) = std::fs::remove_dir_all(&entry.path) {
-                                        println!("{}", e.to_string());
-                                    }
-                                }
-                                else {
-                                    if let Err(e) = std::fs::remove_file(&entry.path) {
-                                        println!("{}", e.to_string());
-                                    }
-                                }
-
-                                self.refresh_dir();
-                            }
-                        }
-                    });
-
-                    if close_context_menu {
-                        ui.memory().close_popup();
-                                
-                        self.context_menu_target = 0;
-                        self.context_menu_response = None;
-                    }
-                }
             });
         });
     }
@@ -416,12 +321,63 @@ impl ExplorerApp {
                 else if entry_label.clicked() {
                     self.selected_entry = Some(idx);
                 }
-                else if entry_label.secondary_clicked() {
-                    self.context_menu_target = idx;
-                    self.context_menu_response = Some(entry_label);
-                    
-                    self.selected_entry = Some(idx);
-                }
+
+                entry_label.context_menu(| ui | {
+                    if ui.selectable_label(false, "Open").clicked() {
+                        if entry.path.exists() {
+                            if entry._type == EntryType::File {
+                                open::that_in_background(&entry.path);
+                            }
+                            else {
+                                new_path = Some(entry.path.clone());
+                            }
+                        }
+
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    // TODO.
+                    ui.add_enabled_ui(false, |ui| {
+                        if ui.selectable_label(false, "Cut").clicked() {
+                            ui.close_menu();
+                        }
+                    });
+
+                    // TODO.
+                    ui.add_enabled_ui(false, |ui| {
+                        if ui.selectable_label(false, "Copy").clicked() {
+                            ui.close_menu();
+                        }
+                    });
+
+                    ui.separator();
+
+                    if ui.selectable_label(false, "Rename").clicked() {
+                        self.renaming_entry = Some(idx);
+                        self.renaming_string = entry.name.clone();
+
+                        ui.close_menu();
+                    }
+
+                    // TODO: This could use a confirmation prompt.
+                    if ui.selectable_label(false, "Remove").clicked() {
+                        if entry._type == EntryType::Folder {
+                            if let Err(e) = std::fs::remove_dir_all(&entry.path) {
+                                println!("{}", e.to_string());
+                            }
+                        }
+                        else {
+                            if let Err(e) = std::fs::remove_file(&entry.path) {
+                                println!("{}", e.to_string());
+                            }
+                        }
+
+                        new_path = Some(self.current_path.clone());
+                        ui.close_menu();
+                    }
+                });
             }
 
             ui.label(entry_type);
