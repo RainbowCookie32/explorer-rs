@@ -197,12 +197,12 @@ impl ExplorerApp {
     }
 
     fn fill_files_table(&mut self, ui: &mut egui::Ui) {
-        let text_size = egui::TextStyle::Body.resolve(ui.style()).size + 5.0;
+        let text_size = egui::TextStyle::Body.resolve(ui.style()).size + 10.0;
         let mut new_path = None;
 
         TableBuilder::new(ui)
             .column(egui_extras::Size::initial(300.0))
-            .column(egui_extras::Size::initial(80.0))
+            .column(egui_extras::Size::initial(100.0))
             .column(egui_extras::Size::initial(80.0))
             .column(egui_extras::Size::initial(100.0))
             .column(egui_extras::Size::initial(100.0))
@@ -245,11 +245,11 @@ impl ExplorerApp {
                         let (entry_name, entry_type) = match entry._type {
                             EntryType::File => {
                                 let file_type = {
-                                    if entry.extension.is_empty() {
-                                        "File".to_string()
+                                    if let Ok(t) = file_format::FileFormat::from_file(&entry.path) {
+                                        t.media_type().to_string()
                                     }
                                     else {
-                                        format!("{} file", entry.extension)
+                                        "File".to_string()
                                     }
                                 };
             
@@ -279,7 +279,11 @@ impl ExplorerApp {
                                     }
                                 }
 
-                                let entry_label = ui.text_edit_singleline(&mut self.renaming_string);
+                                let entry_label = {
+                                    ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                        ui.text_edit_singleline(&mut self.renaming_string)
+                                    }).response
+                                };
 
                                 if entry_label.lost_focus() {
                                     // User committed the changes.
@@ -319,7 +323,13 @@ impl ExplorerApp {
                                     }
                                 };
                                 
-                                let entry_label = ui.selectable_label(is_selected, entry_name);
+                                let entry_label = {
+                                    ui.push_id(&entry.name, | ui | {
+                                        ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                            ui.selectable_label(is_selected, entry_name)
+                                        }).inner
+                                    }).inner
+                                };
                 
                                 if entry_label.double_clicked() {
                                     if entry._type == EntryType::File {
@@ -393,33 +403,45 @@ impl ExplorerApp {
                         });
 
                         row.col(| ui | {
-                            ui.label(entry_type);
+                            ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                ui.label(entry_type);
+                            });
                         });
 
                         row.col(| ui | {
-                            ui.label(ExplorerApp::size_to_string(entry.length));
+                            ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                ui.label(ExplorerApp::size_to_string(entry.length)); 
+                            });
                         });
 
                         row.col(| ui | {
                             if let Some(creation_time) = entry.last_modification.as_ref() {
-                                ui.label(&ExplorerApp::duration_to_string(creation_time));
+                                ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                    ui.label(&ExplorerApp::duration_to_string(creation_time));
+                                });
                             }
                         });
 
                         row.col(| ui | {
                             if let Some(last_accessed) = entry.last_accessed.as_ref() {
-                                ui.label(&ExplorerApp::duration_to_string(last_accessed));
+                                ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                    ui.label(&ExplorerApp::duration_to_string(last_accessed));
+                                });
                             }
                         });
 
                         row.col(| ui | {
                             if let Some(last_modified) = entry.last_modified.as_ref() {
-                                ui.label(&ExplorerApp::duration_to_string(last_modified));
+                                ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                    ui.label(&ExplorerApp::duration_to_string(last_modified));
+                                });
                             }
                         });
 
                         row.col(| ui | {
-                            ui.label(&entry.permissions);
+                            ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                ui.label(&entry.permissions); 
+                            });
                         });
                     }
                 });
