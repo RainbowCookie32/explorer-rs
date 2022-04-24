@@ -9,14 +9,16 @@ edition = "2021"
 dirs = "4.0.0"
 open = "2.0.2"
 time = "0.3.5"
-image = "0.24.1"
+# image = "0.24.1"
 bytesize = "1.1.0"
-poll-promise = "0.1.0"
-tokio = { version = "1.17.0", features = ["full"] }
+# poll-promise = "0.1.0"
+# tokio = { version = "1.17.0", features = ["full"] }
 serde = { version = "1.0.133", features = ["derive"] }
 
-icon-loader = "0.3.6"
 file-format = "0.6.0"
 
 eframe = { git = "https://github.com/emilk/egui", features = ["dark-light"], rev = "10f30a0" }
 egui_extras = { git = "https://github.com/emilk/egui", rev = "10f30a0" }
+
+[target.'cfg(unix)'.dependencies]
+icon-loader = "0.3.6"
