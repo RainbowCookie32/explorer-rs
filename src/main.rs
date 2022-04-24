@@ -557,8 +557,10 @@ impl ExplorerApp {
 }
 
 fn main() {
-    let app = ExplorerApp::default();
+    let mut app = ExplorerApp::default();
     let native_options = eframe::NativeOptions::default();
+
+    app.update_dir_entries();
 
     eframe::run_native("explorer-rs", native_options, Box::new(|_| Box::new(app)));
 }
