@@ -80,24 +80,13 @@ impl Default for ExplorerApp {
     }
 }
 
-impl epi::App for ExplorerApp {
-    fn name(&self) -> &str {
-        "explorer-rs"
-    }
-
-    fn setup(&mut self, _ctx: &egui::CtxRef, _frame: &epi::Frame, storage: Option<&dyn epi::Storage>) {
-        if let Some(storage) = storage {
-            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
-        }
-
-        self.update_dir_entries();
-    }
-
+impl eframe::App for ExplorerApp {
+    #[cfg(feature = "persistence")]
     fn save(&mut self, storage: &mut dyn epi::Storage) {
         epi::set_value(storage, epi::APP_KEY, self);
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.current_path_str.is_empty() {
             self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
         }
@@ -535,5 +524,5 @@ fn main() {
     let app = ExplorerApp::default();
     let native_options = eframe::NativeOptions::default();
 
-    eframe::run_native(Box::new(app), native_options);
+    eframe::run_native("explorer-rs", native_options, Box::new(|_| Box::new(app)));
 }
