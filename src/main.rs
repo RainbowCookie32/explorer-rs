@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
+use eframe::egui;
 use time::Duration;
-use eframe::{egui, epi};
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq)]
@@ -265,10 +265,8 @@ impl ExplorerApp {
                             if new_entry.exists() {
                                 
                             }
-                            else {
-                                if let Err(e) = std::fs::rename(&entry.path, new_entry) {
-                                    println!("{}", e.to_string());
-                                }
+                            else if let Err(e) = std::fs::rename(&entry.path, new_entry) {
+                                println!("{}", e);
                             }
                         }
                     }
@@ -354,13 +352,11 @@ impl ExplorerApp {
                     if ui.selectable_label(false, "Remove").clicked() {
                         if entry._type == EntryType::Folder {
                             if let Err(e) = std::fs::remove_dir_all(&entry.path) {
-                                println!("{}", e.to_string());
+                                println!("{}", e);
                             }
                         }
-                        else {
-                            if let Err(e) = std::fs::remove_file(&entry.path) {
-                                println!("{}", e.to_string());
-                            }
+                        else if let Err(e) = std::fs::remove_file(&entry.path) {
+                            println!("{}", e);
                         }
 
                         new_path = Some(self.current_path.clone());
@@ -398,89 +394,87 @@ impl ExplorerApp {
             let mut dirs = Vec::new();
             let mut files = Vec::new();
 
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Ok(metadata) = entry.metadata() {
-                        let entry_type = {
-                            if metadata.is_file() {
-                                EntryType::File
-                            }
-                            else if metadata.is_dir() {
-                                EntryType::Folder
-                            }
-                            else {
-                                EntryType::Symlink
-                            }
-                        };
-
-                        let entry_name = entry.file_name().into_string().unwrap_or_default();
-                        let entry_path = entry.path();
-                        let entry_extension = entry.path().extension().unwrap_or_default().to_str().unwrap_or_default().to_string();
-                        let entry_length = metadata.len() as usize;
-                        let entry_permissions = if metadata.permissions().readonly() { "r".to_string() } else { "rw".to_string() };
-
-                        let last_modified = {
-                            if let Ok(modified) = metadata.modified() {
-                                if let Ok(modified) = modified.elapsed() {
-                                    Duration::try_from(modified).ok()
-                                }
-                                else {
-                                    None
-                                }
-                            }
-                            else {
-                                None
-                            }
-                        };
-
-                        let last_accessed = {
-                            if let Ok(accessed) = metadata.accessed() {
-                                if let Ok(accessed) = accessed.elapsed() {
-                                    Duration::try_from(accessed).ok()
-                                }
-                                else {
-                                    None
-                                }
-                            }
-                            else {
-                                None
-                            }
-                        };
-
-                        let creation_time = {
-                            if let Ok(created) = metadata.created() {
-                                if let Ok(created) = created.elapsed() {
-                                    Duration::try_from(created).ok()
-                                }
-                                else {
-                                    None
-                                }
-                            }
-                            else {
-                                None
-                            }
-                        };
-
-                        let dir_entry = EntryInfo {
-                            _type: entry_type,
-
-                            name: entry_name,
-                            path: entry_path,
-                            extension: entry_extension,
-                            length: entry_length,
-                            permissions: entry_permissions,
-
-                            last_modified,
-                            last_accessed,
-                            last_modification: creation_time
-                        };
-
-                        if metadata.is_dir() {
-                            dirs.push(dir_entry);
+            for entry in entries.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    let entry_type = {
+                        if metadata.is_file() {
+                            EntryType::File
+                        }
+                        else if metadata.is_dir() {
+                            EntryType::Folder
                         }
                         else {
-                            files.push(dir_entry);
+                            EntryType::Symlink
                         }
+                    };
+
+                    let entry_name = entry.file_name().into_string().unwrap_or_default();
+                    let entry_path = entry.path();
+                    let entry_extension = entry.path().extension().unwrap_or_default().to_str().unwrap_or_default().to_string();
+                    let entry_length = metadata.len() as usize;
+                    let entry_permissions = if metadata.permissions().readonly() { "r".to_string() } else { "rw".to_string() };
+
+                    let last_modified = {
+                        if let Ok(modified) = metadata.modified() {
+                            if let Ok(modified) = modified.elapsed() {
+                                Duration::try_from(modified).ok()
+                            }
+                            else {
+                                None
+                            }
+                        }
+                        else {
+                            None
+                        }
+                    };
+
+                    let last_accessed = {
+                        if let Ok(accessed) = metadata.accessed() {
+                            if let Ok(accessed) = accessed.elapsed() {
+                                Duration::try_from(accessed).ok()
+                            }
+                            else {
+                                None
+                            }
+                        }
+                        else {
+                            None
+                        }
+                    };
+
+                    let creation_time = {
+                        if let Ok(created) = metadata.created() {
+                            if let Ok(created) = created.elapsed() {
+                                Duration::try_from(created).ok()
+                            }
+                            else {
+                                None
+                            }
+                        }
+                        else {
+                            None
+                        }
+                    };
+
+                    let dir_entry = EntryInfo {
+                        _type: entry_type,
+
+                        name: entry_name,
+                        path: entry_path,
+                        extension: entry_extension,
+                        length: entry_length,
+                        permissions: entry_permissions,
+
+                        last_modified,
+                        last_accessed,
+                        last_modification: creation_time
+                    };
+
+                    if metadata.is_dir() {
+                        dirs.push(dir_entry);
+                    }
+                    else {
+                        files.push(dir_entry);
                     }
                 }
             }
