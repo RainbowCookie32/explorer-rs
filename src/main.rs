@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use eframe::egui;
+use egui_extras::TableBuilder;
 use time::Duration;
 use serde::{Deserialize, Serialize};
 
@@ -136,26 +137,11 @@ impl eframe::App for ExplorerApp {
 
                 ui.visuals_mut().override_text_color = None;
             });
-
-            egui::Grid::new("header_grid").min_col_width(110.0).show(ui, |ui| {
-                // FIXME: This barely works. I need a proper solution for a header.
-                ui.label("Name");
-                ui.label("Type");
-                ui.label("Size");
-                ui.label("Creation Time");
-                ui.label("Last Accessed");
-                ui.label("Last Modified");
-                ui.label("Permissions");
-
-                ui.end_row();
-            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
-                egui::Grid::new("entries_grid").min_col_width(90.0).show(ui, |ui| {
-                    self.fill_files_table(ui);
-                });
+                self.fill_files_table(ui);
             });
         });
     }
@@ -211,178 +197,234 @@ impl ExplorerApp {
     }
 
     fn fill_files_table(&mut self, ui: &mut egui::Ui) {
+        let text_size = egui::TextStyle::Body.resolve(ui.style()).size + 5.0;
         let mut new_path = None;
 
-        for (idx, entry) in self.current_dir_items.iter().enumerate() {
-            let renaming = {
-                if let Some(target) = self.renaming_entry.as_ref() {
-                    idx == *target
-                }
-                else {
-                    false
-                }
-            };
+        TableBuilder::new(ui)
+            .column(egui_extras::Size::initial(300.0))
+            .column(egui_extras::Size::initial(80.0))
+            .column(egui_extras::Size::initial(80.0))
+            .column(egui_extras::Size::initial(100.0))
+            .column(egui_extras::Size::initial(100.0))
+            .column(egui_extras::Size::initial(100.0))
+            .column(egui_extras::Size::remainder())
+            .resizable(true)
+            .striped(true)
+            .header(20.0, | mut header | {
+                header.col(| ui | {
+                    ui.strong("Name");
+                });
 
-            let (entry_name, entry_type) = match entry._type {
-                EntryType::File => {
-                    let file_type = {
-                        if entry.extension.is_empty() {
-                            "File".to_string()
-                        }
-                        else {
-                            format!("{} file", entry.extension)
-                        }
-                    };
+                header.col(| ui | {
+                    ui.strong("Type");
+                });
 
-                    (format!("🗋 {}", entry.name), file_type)
-                }
-                EntryType::Folder => (format!("🗁 {}", entry.name), "Folder".to_string()),
-                EntryType::Symlink => (format!("🔗 {}", entry.name), "Symlink".to_string())
-            };
+                header.col(| ui | {
+                    ui.strong("Size");
+                });
 
-            let entry_size = ExplorerApp::size_to_string(entry.length);
+                header.col(| ui | {
+                    ui.strong("Creation Time");
+                });
 
-            if renaming {
-                // Red highlight for the text if there is a file with the same name.
-                if entry.name != self.renaming_string {
-                    if let Some(path) = entry.path.parent() {
-                        if path.join(PathBuf::from(&self.renaming_string)).exists() {
-                            ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(255, 0, 0));
-                        }
-                    }
-                }
+                header.col(| ui | {
+                    ui.strong("Last Accessed");
+                });
 
-                let entry_label = ui.text_edit_singleline(&mut self.renaming_string);
+                header.col(| ui | {
+                    ui.strong("Last Modified");
+                });
 
-                if entry_label.lost_focus() {
-                    // User committed the changes.
-                    if ui.input().key_pressed(egui::Key::Enter) {
-                        // Check if an entry with the same name already exists.
-                        if let Some(parent) = entry.path.parent() {
-                            let new_entry = parent.join(PathBuf::from(&self.renaming_string));
-
-                            // There's already an entry on this directory with that name, don't rename.
-                            if new_entry.exists() {
-                                
+                header.col(| ui | {
+                    ui.strong("Permissions");
+                });
+            })
+            .body(| body | {
+                body.rows(text_size, self.current_dir_items.len(), | row_idx, mut row | {
+                    if let Some(entry) = self.current_dir_items.get(row_idx) {
+                        let (entry_name, entry_type) = match entry._type {
+                            EntryType::File => {
+                                let file_type = {
+                                    if entry.extension.is_empty() {
+                                        "File".to_string()
+                                    }
+                                    else {
+                                        format!("{} file", entry.extension)
+                                    }
+                                };
+            
+                                (format!("🗋 {}", entry.name), file_type)
                             }
-                            else if let Err(e) = std::fs::rename(&entry.path, new_entry) {
-                                println!("{}", e);
-                            }
-                        }
-                    }
+                            EntryType::Folder => (format!("🗁 {}", entry.name), "Folder".to_string()),
+                            EntryType::Symlink => (format!("🔗 {}", entry.name), "Symlink".to_string())
+                        };
 
-                    // Forcing a refresh for the current dir.
-                    new_path = Some(self.current_path.clone());
+                        row.col(| ui | {
+                            let renaming = {
+                                if let Some(target) = self.renaming_entry.as_ref() {
+                                    row_idx == *target
+                                }
+                                else {
+                                    false
+                                }
+                            };
+
+                            if renaming {
+                                // Red highlight for the text if there is a file with the same name.
+                                if entry.name != self.renaming_string {
+                                    if let Some(path) = entry.path.parent() {
+                                        if path.join(PathBuf::from(&self.renaming_string)).exists() {
+                                            ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(255, 0, 0));
+                                        }
+                                    }
+                                }
+
+                                let entry_label = ui.text_edit_singleline(&mut self.renaming_string);
+
+                                if entry_label.lost_focus() {
+                                    // User committed the changes.
+                                    if ui.input().key_pressed(egui::Key::Enter) {
+                                        // Check if an entry with the same name already exists.
+                                        if let Some(parent) = entry.path.parent() {
+                                            let new_entry = parent.join(PathBuf::from(&self.renaming_string));
+                                        
+                                            // There's already an entry on this directory with that name, don't rename.
+                                            if !new_entry.exists() {
+                                                if let Err(e) = std::fs::rename(&entry.path, new_entry) {
+                                                    println!("{}", e);
+                                                }   
+                                            }
+                                        }
+                                    }
+
+                                    // Forcing a refresh for the current dir.
+                                    new_path = Some(self.current_path.clone());
                     
-                    self.renaming_entry = None;
-                    self.renaming_string = String::new();
-                }
-                else {
-                    entry_label.request_focus();
-                }
+                                    self.renaming_entry = None;
+                                    self.renaming_string = String::new();
+                                }
+                                else {
+                                    entry_label.request_focus();
+                                }
 
-                ui.visuals_mut().override_text_color = None;
-            }
-            else {
-                let is_selected = {
-                    if let Some(selection) = self.selected_entry.as_ref() {
-                        *selection == idx
-                    }
-                    else {
-                        false
-                    }
-                };
-                
-                let entry_label = ui.selectable_label(is_selected, entry_name);
-
-                if entry_label.double_clicked() {
-                    if entry._type == EntryType::File {
-                        open::that_in_background(&entry.path);
-                    }
-                    else {
-                        new_path = Some(entry.path.clone());
-                    }
-    
-                    self.selected_entry = Some(idx);
-                }
-                else if entry_label.clicked() {
-                    self.selected_entry = Some(idx);
-                }
-
-                entry_label.context_menu(| ui | {
-                    if ui.selectable_label(false, "Open").clicked() {
-                        if entry.path.exists() {
-                            if entry._type == EntryType::File {
-                                open::that_in_background(&entry.path);
+                                ui.visuals_mut().override_text_color = None;
                             }
                             else {
-                                new_path = Some(entry.path.clone());
+                                let is_selected = {
+                                    if let Some(selection) = self.selected_entry.as_ref() {
+                                        *selection == row_idx
+                                    }
+                                    else {
+                                        false
+                                    }
+                                };
+                                
+                                let entry_label = ui.selectable_label(is_selected, entry_name);
+                
+                                if entry_label.double_clicked() {
+                                    if entry._type == EntryType::File {
+                                        open::that_in_background(&entry.path);
+                                    }
+                                    else {
+                                        new_path = Some(entry.path.clone());
+                                    }
+                    
+                                    self.selected_entry = Some(row_idx);
+                                }
+                                else if entry_label.clicked() {
+                                    self.selected_entry = Some(row_idx);
+                                }
+                
+                                entry_label.context_menu(| ui | {
+                                    if ui.selectable_label(false, "Open").clicked() {
+                                        if entry.path.exists() {
+                                            if entry._type == EntryType::File {
+                                                open::that_in_background(&entry.path);
+                                            }
+                                            else {
+                                                new_path = Some(entry.path.clone());
+                                            }
+                                        }
+                
+                                        ui.close_menu();
+                                    }
+                
+                                    ui.separator();
+                
+                                    // TODO.
+                                    ui.add_enabled_ui(false, |ui| {
+                                        if ui.selectable_label(false, "Cut").clicked() {
+                                            ui.close_menu();
+                                        }
+                                    });
+                
+                                    // TODO.
+                                    ui.add_enabled_ui(false, |ui| {
+                                        if ui.selectable_label(false, "Copy").clicked() {
+                                            ui.close_menu();
+                                        }
+                                    });
+                
+                                    ui.separator();
+                
+                                    if ui.selectable_label(false, "Rename").clicked() {
+                                        self.renaming_entry = Some(row_idx);
+                                        self.renaming_string = entry.name.clone();
+                
+                                        ui.close_menu();
+                                    }
+                
+                                    // TODO: This could use a confirmation prompt.
+                                    if ui.selectable_label(false, "Remove").clicked() {
+                                        if entry._type == EntryType::Folder {
+                                            if let Err(e) = std::fs::remove_dir_all(&entry.path) {
+                                                println!("{}", e);
+                                            }
+                                        }
+                                        else if let Err(e) = std::fs::remove_file(&entry.path) {
+                                            println!("{}", e);
+                                        }
+                
+                                        new_path = Some(self.current_path.clone());
+                                        ui.close_menu();
+                                    }
+                                });
                             }
-                        }
+                        });
 
-                        ui.close_menu();
-                    }
+                        row.col(| ui | {
+                            ui.label(entry_type);
+                        });
 
-                    ui.separator();
+                        row.col(| ui | {
+                            ui.label(ExplorerApp::size_to_string(entry.length));
+                        });
 
-                    // TODO.
-                    ui.add_enabled_ui(false, |ui| {
-                        if ui.selectable_label(false, "Cut").clicked() {
-                            ui.close_menu();
-                        }
-                    });
-
-                    // TODO.
-                    ui.add_enabled_ui(false, |ui| {
-                        if ui.selectable_label(false, "Copy").clicked() {
-                            ui.close_menu();
-                        }
-                    });
-
-                    ui.separator();
-
-                    if ui.selectable_label(false, "Rename").clicked() {
-                        self.renaming_entry = Some(idx);
-                        self.renaming_string = entry.name.clone();
-
-                        ui.close_menu();
-                    }
-
-                    // TODO: This could use a confirmation prompt.
-                    if ui.selectable_label(false, "Remove").clicked() {
-                        if entry._type == EntryType::Folder {
-                            if let Err(e) = std::fs::remove_dir_all(&entry.path) {
-                                println!("{}", e);
+                        row.col(| ui | {
+                            if let Some(creation_time) = entry.last_modification.as_ref() {
+                                ui.label(&ExplorerApp::duration_to_string(creation_time));
                             }
-                        }
-                        else if let Err(e) = std::fs::remove_file(&entry.path) {
-                            println!("{}", e);
-                        }
+                        });
 
-                        new_path = Some(self.current_path.clone());
-                        ui.close_menu();
+                        row.col(| ui | {
+                            if let Some(last_accessed) = entry.last_accessed.as_ref() {
+                                ui.label(&ExplorerApp::duration_to_string(last_accessed));
+                            }
+                        });
+
+                        row.col(| ui | {
+                            if let Some(last_modified) = entry.last_modified.as_ref() {
+                                ui.label(&ExplorerApp::duration_to_string(last_modified));
+                            }
+                        });
+
+                        row.col(| ui | {
+                            ui.label(&entry.permissions);
+                        });
                     }
                 });
-            }
-
-            ui.label(entry_type);
-            ui.label(entry_size);
-
-            if let Some(creation_time) = entry.last_modification.as_ref() {
-                ui.label(&ExplorerApp::duration_to_string(creation_time));
-            }
-
-            if let Some(last_accessed) = entry.last_accessed.as_ref() {
-                ui.label(&ExplorerApp::duration_to_string(last_accessed));
-            }
-
-            if let Some(last_modified) = entry.last_modified.as_ref() {
-                ui.label(&ExplorerApp::duration_to_string(last_modified));
-            }
-
-            ui.label(&entry.permissions);
-            ui.end_row();
-        }
+            })
+        ;
 
         if let Some(new_path) = new_path {
             self.change_dir(new_path);
