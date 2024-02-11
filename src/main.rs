@@ -215,33 +215,13 @@ impl ExplorerApp {
             .resizable(true)
             .striped(true)
             .header(20.0, | mut header | {
-                header.col(| ui | {
-                    ui.strong("Name");
-                });
-
-                header.col(| ui | {
-                    ui.strong("Type");
-                });
-
-                header.col(| ui | {
-                    ui.strong("Size");
-                });
-
-                header.col(| ui | {
-                    ui.strong("Creation Time");
-                });
-
-                header.col(| ui | {
-                    ui.strong("Last Accessed");
-                });
-
-                header.col(| ui | {
-                    ui.strong("Last Modified");
-                });
-
-                header.col(| ui | {
-                    ui.strong("Permissions");
-                });
+                header.col(| ui | { ui.strong("Name"); });
+                header.col(| ui | { ui.strong("Type"); });
+                header.col(| ui | { ui.strong("Size"); });
+                header.col(| ui | { ui.strong("Creation date"); });
+                header.col(| ui | { ui.strong("Last accessed"); });
+                header.col(| ui | { ui.strong("Last modified"); });
+                header.col(| ui | { ui.strong("Permissions"); });
             })
             .body(| body | {
                 body.rows(text_size, self.current_dir_items.len(), | mut row | {
@@ -252,7 +232,12 @@ impl ExplorerApp {
                             EntryType::File => {
                                 let file_type = {
                                     if let Ok(t) = file_format::FileFormat::from_file(&entry.path) {
-                                        t.media_type().to_string()
+                                        if let Some(short_name) = t.short_name() {
+                                            format!("{} File", short_name)
+                                        }
+                                        else {
+                                            "File".to_string()
+                                        }
                                     }
                                     else {
                                         "File".to_string()
