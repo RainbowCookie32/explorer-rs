@@ -88,62 +88,7 @@ impl eframe::App for ExplorerApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.current_path_str.is_empty() {
-            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
-        }
-
-        egui::TopBottomPanel::top("current_path").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_enabled_ui(!self.previous_path.is_empty(), |ui| {
-                    if ui.small_button("⏴").clicked() {
-                        self.previous_dir();
-                    }
-                });
-
-                ui.add_enabled_ui(!self.forward_path.is_empty(), |ui| {
-                    if ui.small_button("⏵").clicked() {
-                        self.forward_dir();
-                    }
-                });
-
-                ui.add_enabled_ui(self.current_path.parent().is_some(), |ui| {
-                    if ui.small_button("⏶").clicked() {
-                        self.previous_level();
-                    }
-                });
-
-                ui.separator();
-
-                if ui.small_button("↻").clicked() {
-                    self.refresh_dir();
-                }
-
-                if self.editing_current_path {
-                    if PathBuf::from(&self.current_path_str).exists() {
-                        ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(0, 255, 0));
-                    }
-                    else {
-                        ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(255, 0, 0));
-                    }
-                }
-
-                let path_text = ui.text_edit_singleline(&mut self.current_path_str);
-                
-                self.editing_current_path = path_text.has_focus();
-
-                if path_text.lost_focus() && ui.input().key_down(egui::Key::Enter) {
-                    self.change_dir(PathBuf::from(&self.current_path_str));
-                }
-
-                ui.visuals_mut().override_text_color = None;
-            });
-        });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
-                self.fill_files_table(ui);
-            });
-        });
+        self.main_app(ctx);
     }
 }
 
@@ -196,18 +141,77 @@ impl ExplorerApp {
         self.update_dir_entries();
     }
 
+    fn main_app(&mut self, ctx: &egui::Context) {
+        if self.current_path_str.is_empty() {
+            self.current_path_str = self.current_path.to_str().unwrap_or_default().to_string();
+        }
+
+        egui::TopBottomPanel::top("current_path").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_enabled_ui(!self.previous_path.is_empty(), |ui| {
+                    if ui.small_button("⏴").clicked() {
+                        self.previous_dir();
+                    }
+                });
+
+                ui.add_enabled_ui(!self.forward_path.is_empty(), |ui| {
+                    if ui.small_button("⏵").clicked() {
+                        self.forward_dir();
+                    }
+                });
+
+                ui.add_enabled_ui(self.current_path.parent().is_some(), |ui| {
+                    if ui.small_button("⏶").clicked() {
+                        self.previous_level();
+                    }
+                });
+
+                ui.separator();
+
+                if ui.small_button("↻").clicked() {
+                    self.refresh_dir();
+                }
+
+                if self.editing_current_path {
+                    if PathBuf::from(&self.current_path_str).exists() {
+                        ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(0, 255, 0));
+                    }
+                    else {
+                        ui.visuals_mut().override_text_color = Some(egui::Color32::from_rgb(255, 0, 0));
+                    }
+                }
+
+                let path_text = ui.text_edit_singleline(&mut self.current_path_str);
+                
+                self.editing_current_path = path_text.has_focus();
+
+                if path_text.lost_focus() && ui.input(| i | i.key_down(egui::Key::Enter)) {
+                    self.change_dir(PathBuf::from(&self.current_path_str));
+                }
+
+                ui.visuals_mut().override_text_color = None;
+            });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
+                self.fill_files_table(ui);
+            });
+        });
+    }
+
     fn fill_files_table(&mut self, ui: &mut egui::Ui) {
         let text_size = egui::TextStyle::Body.resolve(ui.style()).size + 10.0;
         let mut new_path = None;
 
         TableBuilder::new(ui)
-            .column(egui_extras::Size::initial(300.0))
-            .column(egui_extras::Size::initial(100.0))
-            .column(egui_extras::Size::initial(80.0))
-            .column(egui_extras::Size::initial(100.0))
-            .column(egui_extras::Size::initial(100.0))
-            .column(egui_extras::Size::initial(100.0))
-            .column(egui_extras::Size::remainder())
+            .column(egui_extras::Column::initial(300.0))
+            .column(egui_extras::Column::initial(100.0))
+            .column(egui_extras::Column::initial(80.0))
+            .column(egui_extras::Column::initial(100.0))
+            .column(egui_extras::Column::initial(100.0))
+            .column(egui_extras::Column::initial(100.0))
+            .column(egui_extras::Column::remainder())
             .resizable(true)
             .striped(true)
             .header(20.0, | mut header | {
@@ -240,7 +244,9 @@ impl ExplorerApp {
                 });
             })
             .body(| body | {
-                body.rows(text_size, self.current_dir_items.len(), | row_idx, mut row | {
+                body.rows(text_size, self.current_dir_items.len(), | mut row | {
+                    let row_idx = row.index();
+
                     if let Some(entry) = self.current_dir_items.get(row_idx) {
                         let (entry_name, entry_type) = match entry._type {
                             EntryType::File => {
@@ -280,14 +286,14 @@ impl ExplorerApp {
                                 }
 
                                 let entry_label = {
-                                    ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                         ui.text_edit_singleline(&mut self.renaming_string)
                                     }).response
                                 };
 
                                 if entry_label.lost_focus() {
                                     // User committed the changes.
-                                    if ui.input().key_pressed(egui::Key::Enter) {
+                                    if ui.input(| i | i.key_pressed(egui::Key::Enter)) {
                                         // Check if an entry with the same name already exists.
                                         if let Some(parent) = entry.path.parent() {
                                             let new_entry = parent.join(PathBuf::from(&self.renaming_string));
@@ -325,7 +331,7 @@ impl ExplorerApp {
                                 
                                 let entry_label = {
                                     ui.push_id(&entry.name, | ui | {
-                                        ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                             ui.selectable_label(is_selected, entry_name)
                                         }).inner
                                     }).inner
@@ -357,6 +363,27 @@ impl ExplorerApp {
                                         }
                 
                                         ui.close_menu();
+                                    }
+
+                                    if entry._type == EntryType::Folder {
+                                        if ui.selectable_label(false, "Open in new window").clicked() {
+                                            ui.close_menu();
+                                            
+                                            let vp_id = egui::ViewportId::from_hash_of(&entry.path);
+                                            let vp_builder = egui::ViewportBuilder::default()
+                                                .with_title("explorer-rs")
+                                            ;
+
+                                            let entry_path = entry.path.clone();
+
+                                            ui.ctx().show_viewport_deferred(vp_id, vp_builder, move | ctx, _ | {
+                                                let entry_path = &entry_path;
+                                                let mut new_state = ExplorerApp::default();
+                                                new_state.change_dir(entry_path.to_path_buf());
+
+                                                new_state.main_app(ctx);
+                                            });
+                                        }
                                     }
                 
                                     ui.separator();
@@ -403,20 +430,20 @@ impl ExplorerApp {
                         });
 
                         row.col(| ui | {
-                            ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                 ui.label(entry_type);
                             });
                         });
 
                         row.col(| ui | {
-                            ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                 ui.label(ExplorerApp::size_to_string(entry.length)); 
                             });
                         });
 
                         row.col(| ui | {
                             if let Some(creation_time) = entry.last_modification.as_ref() {
-                                ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                     ui.label(&ExplorerApp::duration_to_string(creation_time));
                                 });
                             }
@@ -424,7 +451,7 @@ impl ExplorerApp {
 
                         row.col(| ui | {
                             if let Some(last_accessed) = entry.last_accessed.as_ref() {
-                                ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                     ui.label(&ExplorerApp::duration_to_string(last_accessed));
                                 });
                             }
@@ -432,14 +459,14 @@ impl ExplorerApp {
 
                         row.col(| ui | {
                             if let Some(last_modified) = entry.last_modified.as_ref() {
-                                ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                     ui.label(&ExplorerApp::duration_to_string(last_modified));
                                 });
                             }
                         });
 
                         row.col(| ui | {
-                            ui.with_layout(egui::Layout::left_to_right(), | ui | {
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), | ui | {
                                 ui.label(&entry.permissions); 
                             });
                         });
